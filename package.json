@@ -1,0 +1,25 @@
+{
+  "name": "dsh-code-stats",
+  "description": "DSH 代码统计插件：统计 DSH 生成的代码行数、文档数与代码存活率，Web 面板展示。Code generation statistics for DeepSeek Harness: lines of generated code, docs, and survival rate.",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}
