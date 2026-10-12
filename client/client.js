@@ -79,6 +79,12 @@ window.__ModuleLoader__.load({ id: "dsh-code-stats", factory: (require) => {
 
 	const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 	const pct = (r) => (r === null || r === undefined ? "—" : `${(r * 100).toFixed(1)}%`);
+	const money = (n) => {
+		if (typeof n !== "number") return "—";
+		const abs = Math.abs(n);
+		const s = abs >= 1 ? n.toFixed(2) : abs >= 0.01 ? n.toFixed(3) : n.toFixed(4);
+		return `$${s}`;
+	};
 
 	/**
 	 * Native <select> controls do not inherit the app theme (transparent
@@ -240,6 +246,13 @@ window.__ModuleLoader__.load({ id: "dsh-code-stats", factory: (require) => {
 					sub: `写入调用成功 ${fmt(data.adoption?.ok)} / 全部 ${fmt(data.adoption?.total)} 次${data.adoption?.failed ? ` · 失败 ${fmt(data.adoption.failed)}` : ""}`,
 				}),
 				createElement(StatCard, {
+					label: "总成本",
+					value: money(data.costs?.total),
+					sub: data.costs
+						? `代码 ${money(data.costs.code)} · 文档 ${money(data.costs.doc)} · 对话开销 ${money(data.costs.overhead)}`
+						: "未配置定价",
+				}),
+				createElement(StatCard, {
 					label: "文档",
 					value: fmt(data.doc?.docFileCount),
 					sub: `共生成 ${fmt(data.doc?.generatedLines)} 行 · 存活 ${pct(data.doc?.survivalRate)}`,
@@ -284,7 +297,10 @@ window.__ModuleLoader__.load({ id: "dsh-code-stats", factory: (require) => {
 			createElement("div", { style: styles.note },
 				`统计范围：${range === "custom"
 					? `${customFrom || "最早"} ~ ${customTo || "现在"}`
-					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`));
+					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
+			data.costs?.pricing && createElement("div", { style: styles.note },
+				`成本按轮次归集（${data.costs.pricing.label || "当前模型"}，USD / 1M tokens：输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
+			);
 	}
 
 	function apply(ctx) {

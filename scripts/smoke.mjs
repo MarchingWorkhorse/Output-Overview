@@ -100,6 +100,7 @@ async function main() {
         `win=${win} sessions=${json.sessionCount} code=${json.code?.generatedLines}L`,
         `survival=${json.code?.survivalRate} adoption=${json.adoption?.rate}(${json.adoption?.ok}/${json.adoption?.total})`,
         `doc=${json.doc?.docFileCount}f/${json.doc?.generatedLines}L`,
+        `cost=${json.costs ? `$${json.costs.total?.toFixed(2)}(code $${json.costs.code?.toFixed(2)} doc $${json.costs.doc?.toFixed(2)} oh $${json.costs.overhead?.toFixed(2)}, turns ${json.costs.turnsWithUsage}/${json.costs.turnsWithUsage + json.costs.turnsWithoutUsage})` : 'n/a'}`,
         `computeMs=${json.computeMs}`);
     }
   } finally {
