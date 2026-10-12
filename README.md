@@ -14,11 +14,11 @@
 | 文档统计 | `.md/.markdown/.mdx/.txt/.rst/.adoc` 的文件数与生成行数 |
 | 采纳率（代码存活） | 按文件重放全部写入/编辑并做行级来源追踪，`窗口内生成且现仍存活的行数 ÷ 窗口内生成行数` |
 | 采纳率（工具执行） | 写入类工具调用成功执行的比例；被拒绝、报错或无结果的调用算不采纳，只读 `view` 不计入 |
-| 成本 | 按轮次归集 token 成本（`assistant/message` 的 usage：未缓存输入 / 缓存读 / 缓存写 / 输出），轮次成本按该轮生成的代码/文档行数比例分摊，无写入的轮次计入「对话开销」 |
+| 成本 | 按轮次归集 token 成本（`assistant/message` 的 usage：未缓存输入 / 缓存读 / 缓存写 / 输出），轮次成本按该轮生成的代码/文档行数比例分摊，无写入的轮次计入「对话开销」；**以人民币（CNY，¥）显示**，按可配置汇率由 USD 折算 |
 | 时间过滤 | 全部 / 今天 / 最近 7 / 30 天 / 自定义起止日期（`from`/`to`，epoch ms，双闭区间）；窗口内只计窗口期操作，内容重放仍用全量历史保证存活判定准确；采纳率与成本均跟随窗口 |
 | 维度 | 总览卡片、按会话、按日期、按文件 Top 榜 |
 
-实测示例（某真实环境，37 个会话）：生成代码 12,551 行，代码存活采纳率 80.9%，工具执行采纳率 88.0%，文档 58 个 / 4,577 行，总成本 $8.61（代码 $5.47 · 文档 $1.45 · 对话开销 $1.69）。
+实测示例（某真实环境，37 个会话）：生成代码 12,604 行，代码存活采纳率 80.5%，工具执行采纳率 88.0%，文档 58 个 / 4,682 行，总成本 ¥58.06（代码 ¥36.82 · 文档 ¥9.95 · 对话开销 ¥11.29，按 1 USD = 6.70 CNY 折算）。
 
 ## 安装
 
@@ -36,12 +36,12 @@ dsh plugin --profile web add D:\path\to\output-overview
 
 ## 使用
 
-- **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（Ctrl/⌘ 点击；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。
-- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细。
+- **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（点击列表项切换选中，可多选；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。成本以人民币（¥）显示，注明汇率。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。
 
-## 定价配置
+## 定价与币种配置
 
-成本默认按 `glm-5.3-flash` 的 USD 单价计算（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21，每 1M tokens）。换模型或换价时，在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
+成本默认按 `glm-5.3-flash` 的 USD 单价计算（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21，每 1M tokens），并**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。换模型、换价或换显示币种时，在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
 
 ```yaml
 - id: output-overview
@@ -52,6 +52,10 @@ dsh plugin --profile web add D:\path\to\output-overview
       miss: 0.06     # 未缓存输入 inputTokens
       write: 0.21    # cacheWriteTokens
       out: 0.21      # 输出 outputTokens
+    currency:        # 显示币种（成本值按 fx 折算，pricing 仍为 USD 报价）
+      code: CNY      # 改回 USD 即恢复美元显示
+      symbol: "¥"
+      fx: 6.7        # 1 USD = 6.7 显示币种
 ```
 
 ## 数据来源与权限说明

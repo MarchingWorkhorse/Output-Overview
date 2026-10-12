@@ -96,13 +96,22 @@ async function main() {
       const win = json.window?.from
         ? `${new Date(json.window.from).toISOString().slice(0, 10)}~${json.window.to ? new Date(json.window.to).toISOString().slice(0, 10) : 'now'}`
         : 'all';
+      const cur = json.displayCurrency ?? { code: 'USD', symbol: '$' };
+      const fx = json.costs?.fx?.rate ?? 1;
       console.log(`GET ${suffix || '/'} -> ${body.status} in ${Date.now() - t0}ms:`,
         `win=${win} sessions=${json.sessionCount} code=${json.code?.generatedLines}L`,
         `survival=${json.code?.survivalRate} adoption=${json.adoption?.rate}(${json.adoption?.ok}/${json.adoption?.total})`,
         `doc=${json.doc?.docFileCount}f/${json.doc?.generatedLines}L`,
-        `cost=${json.costs ? `$${json.costs.total?.toFixed(2)}(code $${json.costs.code?.toFixed(2)} doc $${json.costs.doc?.toFixed(2)} oh $${json.costs.overhead?.toFixed(2)}, turns ${json.costs.turnsWithUsage}/${json.costs.turnsWithUsage + json.costs.turnsWithoutUsage})` : 'n/a'}`,
+        `cost=${json.costs ? `${cur.symbol}${json.costs.total?.toFixed(2)}${cur.code}(code ${cur.symbol}${json.costs.code?.toFixed(2)} doc ${cur.symbol}${json.costs.doc?.toFixed(2)} oh ${cur.symbol}${json.costs.overhead?.toFixed(2)}, turns ${json.costs.turnsWithUsage}/${json.costs.turnsWithUsage + json.costs.turnsWithoutUsage})` : 'n/a'}`,
         `wsOptions=${json.workspaces?.length} filter=[${(json.workspaceFilter ?? []).join(',')}]`,
         `computeMs=${json.computeMs}`);
+      // Default display currency must be CNY (fx conversion applied to values,
+      // pricing still quoted in USD).
+      if (json.costs) {
+        if (cur.code !== 'CNY') throw new Error(`displayCurrency should be CNY, got ${cur.code}`);
+        if (typeof fx !== 'number' || fx <= 0) throw new Error(`fx rate invalid: ${fx}`);
+        if (json.costs.pricing?.currency !== 'USD') throw new Error('pricing must stay USD');
+      }
     }
     // Multi-workspace selection must return the union and keep the full
     // option list; single selection must not shrink the option list.

@@ -87,11 +87,19 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 
 	const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 	const pct = (r) => (r === null || r === undefined ? "—" : `${(r * 100).toFixed(1)}%`);
-	const money = (n) => {
-		if (typeof n !== "number") return "—";
-		const abs = Math.abs(n);
-		const s = abs >= 1 ? n.toFixed(2) : abs >= 0.01 ? n.toFixed(3) : n.toFixed(4);
-		return `$${s}`;
+	/**
+	 * Money formatter bound to the payload's display currency. The host
+	 * converts cost VALUES (costs.* are already in `displayCurrency.code` at
+	 * `displayCurrency.fx` per USD); unit prices in costs.pricing remain USD.
+	 */
+	const moneyIn = (symbol) => {
+		const s = symbol || "$";
+		return (n) => {
+			if (typeof n !== "number") return "—";
+			const abs = Math.abs(n);
+			const v = abs >= 1 ? n.toFixed(2) : abs >= 0.01 ? n.toFixed(3) : n.toFixed(4);
+			return `${s}${v}`;
+		};
 	};
 
 	/**
@@ -241,6 +249,12 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 	// diagnosable instead of silently wrong.
 	const staleHost = typeof data.workspaceFilter === "string";
 	const recentDays = [...data.days].slice(-14).reverse();
+	// Display currency from the payload (host converts the values; we only
+	// relabel). Fall back to USD for stale payloads without displayCurrency.
+	const cur = data.displayCurrency && data.displayCurrency.code
+		? data.displayCurrency
+		: { code: "USD", symbol: "$" };
+	const money = moneyIn(cur.symbol);
 
 		return createElement("div", { style: styles.root },
 			createElement("div", { style: styles.headerRow },
@@ -321,7 +335,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					sub: `写入调用成功 ${fmt(data.adoption?.ok)} / 全部 ${fmt(data.adoption?.total)} 次${data.adoption?.failed ? ` · 失败 ${fmt(data.adoption.failed)}` : ""}`,
 				}),
 				createElement(StatCard, {
-					label: "总成本",
+					label: `总成本（${cur.code}）`,
 					value: money(data.costs?.total),
 					sub: data.costs
 						? `代码 ${money(data.costs.code)} · 文档 ${money(data.costs.doc)} · 对话开销 ${money(data.costs.overhead)}`
@@ -374,7 +388,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					? `${customFrom || "最早"} ~ ${customTo || "现在"}`
 					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
 			data.costs?.pricing && createElement("div", { style: styles.note },
-				`成本按轮次归集（${data.costs.pricing.label || "当前模型"}，USD / 1M tokens：输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
+				`成本按轮次归集并以 ${cur.code}（${cur.symbol}）显示（汇率 1 USD = ${data.costs.fx?.rate ?? 1} ${cur.code}；模型定价 ${data.costs.pricing.label || "当前模型"}：USD / 1M tokens，输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
 			staleHost && createElement("div", { style: { ...styles.note, color: "#d29922" } },
 				"检测到主机端插件仍是旧版本（workspaceFilter 为字符串）：请重启 DSH 让 lib/ 生效后强刷本页。"),
 			createElement("div", { style: styles.note },
