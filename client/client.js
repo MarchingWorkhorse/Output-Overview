@@ -1,26 +1,26 @@
 /**
- * dsh-code-stats — browser client bundle.
+ * output-overview — browser client bundle.
  *
- * Served at /plugins/dsh-code-stats/client.js by the web host and loaded
+ * Served at /plugins/output-overview/client.js by the web host and loaded
  * through window.__ModuleLoader__ with the host's frozen module table
  * (react resolves through require). Registers one settings.section slot
- * that renders the statistics panel. Data comes from the host route
- * /code-stats/api/summary via a plain relative fetch (same-origin).
+ * that renders the output statistics panel. Data comes from the host route
+ * /output-overview/api/summary via a plain relative fetch (same-origin).
  */
-window.__ModuleLoader__.load({ id: "dsh-code-stats", factory: (require) => {
+window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 	const module = { exports: {} };
 	const exports = module.exports;
 	const React = require("react");
 	const createElement = React.createElement;
 
-	const name = "dsh-code-stats";
+	const name = "output-overview";
 
 	/** Resolve the host API base against the document base, mirroring dshmarket. */
 	function apiBase() {
 		try {
-			return new URL("code-stats/api/", document.baseURI).href;
+			return new URL("output-overview/api/", document.baseURI).href;
 		} catch {
-			return "/code-stats/api/";
+			return "/output-overview/api/";
 		}
 	}
 
@@ -306,9 +306,9 @@ window.__ModuleLoader__.load({ id: "dsh-code-stats", factory: (require) => {
 	function apply(ctx) {
 		ctx.slots.inject("settings.section", () => ctx.slots.register({
 			name: "settings.section",
-			id: "dsh-code-stats",
+			id: "output-overview",
 			order: 42,
-			label: () => "代码统计",
+			label: () => "产出总览",
 		}, () => createElement(SummaryPanel)));
 	}
 

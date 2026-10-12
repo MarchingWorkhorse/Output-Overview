@@ -1,10 +1,10 @@
-# dsh-code-stats
+# output-overview
 
-> 一句话：给 DeepSeek Harness（DSH）装上「产出仪表盘」—— 自动统计 AI 生成的代码行数、文档数量和采纳率，在 Web 设置面板里按工作区、时间范围查看。
+> 一句话：给 DeepSeek Harness（DSH）装上「产出总览」—— 自动统计 AI 生成的代码行数、文档数量、采纳率和成本，在 Web 设置面板里按工作区、时间范围查看。
 
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-`dsh-code-stats` 是一个 DSH 第三方插件：它读取 DSH 的会话历史日志，识别其中的文件写入操作（`write` / `edit` / `str_replace_editor`），离线聚合出代码与文档的产出统计，并通过宿主 HTTP 接口 + Web 设置面板展示。全部计算在本机完成，不访问任何外部服务。
+`output-overview` 是一个 DSH 第三方插件：它读取 DSH 的会话历史日志，识别其中的文件写入操作（`write` / `edit` / `str_replace_editor`），离线聚合出代码与文档的产出统计和成本归集，并通过宿主 HTTP 接口 + Web 设置面板展示。全部计算在本机完成，不访问任何外部服务。
 
 ## 功能
 
@@ -26,25 +26,25 @@
 dsh plugin --profile web add https://github.com/MarchingWorkhorse/Output-Overview.git
 ```
 
-装好后**重启 DSH**（插件进入 bundle 栈，需进程重载）；打开 Web 界面的 **设置 → 代码统计** 即可查看面板。
+装好后**重启 DSH**（插件进入 bundle 栈，需进程重载）；打开 Web 界面的 **设置 → 产出总览** 即可查看面板。
 
 开发调试（本地路径安装，junction 链接，改代码后重启即生效）：
 
 ```powershell
-dsh plugin --profile web add D:\path\to\dsh-code-stats
+dsh plugin --profile web add D:\path\to\output-overview
 ```
 
 ## 使用
 
-- **Web 面板**：设置 → 「代码统计」。顶部支持工作区筛选、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。
-- **HTTP API**：`GET /code-stats/api/summary`，支持 `?workspace=<cwd>`、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率聚合与明细。
+- **Web 面板**：设置 → 「产出总览」。顶部支持工作区筛选、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细。
 
 ## 定价配置
 
 成本默认按 `glm-5.3-flash` 的 USD 单价计算（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21，每 1M tokens）。换模型或换价时，在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
 
 ```yaml
-- id: dsh-code-stats
+- id: output-overview
   config:
     pricing:
       label: my-model
@@ -74,6 +74,7 @@ dsh plugin --profile web add D:\path\to\dsh-code-stats
 node lib\stats-engine.test.js        # 统计引擎测试
 node lib\session-reader.test.js      # 会话读取层测试
 node lib\stats-window.test.js        # 时间窗口测试
+node lib\stats-cost.test.js          # 成本归集测试
 node scripts\smoke.mjs               # 真实数据端到端冒烟（假宿主 + 真 HTTP）
 ```
 

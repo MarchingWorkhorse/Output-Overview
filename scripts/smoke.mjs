@@ -76,8 +76,8 @@ async function main() {
   const query = fakeSessionQuery();
   const { ctx, routes } = fakeCtx(query);
   apply(ctx, {});
-  const handler = routes.get('/code-stats/api/summary');
-  if (!handler) throw new Error('route /code-stats/api/summary not registered');
+  const handler = routes.get('/output-overview/api/summary');
+  if (!handler) throw new Error('route /output-overview/api/summary not registered');
 
   const server = http.createServer((req, res) => handler(req, res));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -86,7 +86,7 @@ async function main() {
     for (const suffix of ['', '?subagents=false', '?workspace=NOPE', '?from=0&to=' + (Date.now() - 365 * 86400000), '?from=' + (Date.now() - 86400000)]) {
       const t0 = Date.now();
       const body = await new Promise((resolve, reject) => {
-        http.get({ host: '127.0.0.1', port, path: `/code-stats/api/summary${suffix}` }, (res) => {
+        http.get({ host: '127.0.0.1', port, path: `/output-overview/api/summary${suffix}` }, (res) => {
           let data = '';
           res.on('data', (c) => { data += c; });
           res.on('end', () => resolve({ status: res.statusCode, data }));
