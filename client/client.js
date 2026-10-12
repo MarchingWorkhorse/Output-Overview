@@ -175,6 +175,13 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		const stateRef = React.useRef({ workspace, subagents, range, customFrom, customTo });
 		stateRef.current = { workspace, subagents, range, customFrom, customTo };
 
+		// Cumulative workspace option list: a stale host's filtered payload
+		// shrinks `workspaces`, which must never collapse the picker. The ref
+		// lives ABOVE every early return (rules of hooks: hook count and
+		// order must be identical on every render — violating that throws
+		// React error #310 and the panel dies).
+		const knownWsRef = React.useRef([]);
+
 		const load = React.useCallback(async (opts = {}) => {
 			// Keep the previous data on screen while refreshing; only a real
 			// failure replaces it with the error view.
@@ -223,11 +230,11 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 	const rawFilter = data.workspaceFilter;
 	const filterList = Array.isArray(rawFilter) ? rawFilter : rawFilter ? [rawFilter] : [];
 	const workspaceList = Array.isArray(data.workspaces) ? data.workspaces : [];
-	// Remember every workspace ever seen so a stale host's shrunken list
-	// cannot collapse the option box back to one entry.
-	const knownWsRef = React.useRef(workspaceList.slice());
-	const known = new Set(knownWsRef.current);
-	for (const w of workspaceList) if (!known.has(w)) { known.add(w); knownWsRef.current.push(w); }
+	// Merge this payload's workspaces into the cumulative option list.
+	{
+		const known = new Set(knownWsRef.current);
+		for (const w of workspaceList) if (!known.has(w)) { known.add(w); knownWsRef.current.push(w); }
+	}
 	const fullWorkspaceList = knownWsRef.current;
 	// Pre-multiselect host lib reports the filter as a plain string; warn so a
 	// half-updated deployment (client hot-reloaded, host not restarted) is
