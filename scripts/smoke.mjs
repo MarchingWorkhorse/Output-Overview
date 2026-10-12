@@ -101,7 +101,21 @@ async function main() {
         `survival=${json.code?.survivalRate} adoption=${json.adoption?.rate}(${json.adoption?.ok}/${json.adoption?.total})`,
         `doc=${json.doc?.docFileCount}f/${json.doc?.generatedLines}L`,
         `cost=${json.costs ? `$${json.costs.total?.toFixed(2)}(code $${json.costs.code?.toFixed(2)} doc $${json.costs.doc?.toFixed(2)} oh $${json.costs.overhead?.toFixed(2)}, turns ${json.costs.turnsWithUsage}/${json.costs.turnsWithUsage + json.costs.turnsWithoutUsage})` : 'n/a'}`,
+        `wsOptions=${json.workspaces?.length} filter=[${(json.workspaceFilter ?? []).join(',')}]`,
         `computeMs=${json.computeMs}`);
+    }
+    // Multi-workspace selection must return the union and keep the full
+    // option list; single selection must not shrink the option list.
+    for (const suffix of ['?workspace=a', '?workspace=a&workspace=b']) {
+      const body = await new Promise((resolve, reject) => {
+        http.get({ host: '127.0.0.1', port, path: `/output-overview/api/summary${suffix}` }, (res) => {
+          let data = '';
+          res.on('data', (c) => { data += c; });
+          res.on('end', () => resolve(data));
+        }).on('error', reject);
+      });
+      const json = JSON.parse(body);
+      console.log(`GET ${suffix} -> filter=[${(json.workspaceFilter ?? []).join(',')}] sessions=${json.sessionCount} code=${json.code?.generatedLines}L wsOptions=${json.workspaces?.length}`);
     }
   } finally {
     server.close();

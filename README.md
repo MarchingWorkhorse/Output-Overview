@@ -36,8 +36,8 @@ dsh plugin --profile web add D:\path\to\output-overview
 
 ## 使用
 
-- **Web 面板**：设置 → 「产出总览」。顶部支持工作区筛选、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。
-- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细。
+- **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（Ctrl/⌘ 点击；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细。
 
 ## 定价配置
 

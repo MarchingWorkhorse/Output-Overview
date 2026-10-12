@@ -28,7 +28,15 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		const url = new URL("summary", apiBase());
 		if (params) {
 			for (const [k, v] of Object.entries(params)) {
-				if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+				if (v === undefined || v === null) continue;
+				if (Array.isArray(v)) {
+					// repeated query params: ?workspace=a&workspace=b
+					for (const item of v) {
+						if (item !== "" && item !== undefined && item !== null) url.searchParams.append(k, String(item));
+					}
+					continue;
+				}
+				if (v !== "") url.searchParams.set(k, String(v));
 			}
 		}
 		const response = await fetch(url, { headers: { accept: "application/json" } });
@@ -144,7 +152,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		const [data, setData] = React.useState(null);
 		const [error, setError] = React.useState(null);
 		const [loading, setLoading] = React.useState(true);
-		const [workspace, setWorkspace] = React.useState("");
+		const [workspace, setWorkspace] = React.useState([]); // array: multi-select
 		const [subagents, setSubagents] = React.useState("true");
 		const [range, setRange] = React.useState("all");
 		const [customFrom, setCustomFrom] = React.useState(() => isoDay(new Date(Date.now() - 30 * 86_400_000)));
@@ -168,7 +176,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					opts.customFrom ?? customFrom,
 					opts.customTo ?? customTo);
 				const payload = await fetchSummary({
-					workspace: opts.workspace ?? workspace,
+					workspace: opts.workspace ?? workspace, // array -> repeated params
 					subagents: opts.subagents ?? subagents,
 					from: win.from,
 					to: win.to,
@@ -198,12 +206,23 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 
 		return createElement("div", { style: styles.root },
 			createElement("div", { style: styles.headerRow },
+				// Workspace multi-select: ctrl/cmd-click (or the All toggle) picks
+				// several; an empty selection means all workspaces.
 				createElement("select", {
-					style: selectStyle, value: workspace,
-					onChange: (e) => { const v = e.target.value; setWorkspace(v); load({ workspace: v }); },
+					style: { ...selectStyle, height: 64 },
+					multiple: true, size: Math.min(6, Math.max(2, data.workspaces?.length ?? 2)),
+					value: workspace,
+					onChange: (e) => {
+						const picked = [...e.target.selectedOptions].map((o) => o.value);
+						setWorkspace(picked);
+						load({ workspace: picked });
+					},
 				},
-					createElement("option", { value: "" }, `全部工作区 (${data.workspaces?.length ?? 0})`),
 					(data.workspaces ?? []).map((w) => createElement("option", { key: w, value: w }, w))),
+				createElement("button", {
+					style: styles.button,
+					onClick: () => { setWorkspace([]); load({ workspace: [] }); },
+				}, workspace.length === 0 ? "全部工作区" : `全部工作区 (已选 ${workspace.length})`),
 				createElement("select", {
 					style: selectStyle, value: range,
 					onChange: (e) => { const v = e.target.value; setRange(v); load({ range: v }); },
@@ -300,6 +319,8 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
 			data.costs?.pricing && createElement("div", { style: styles.note },
 				`成本按轮次归集（${data.costs.pricing.label || "当前模型"}，USD / 1M tokens：输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
+			createElement("div", { style: styles.note },
+				`工作区筛选：${data.workspaceFilter?.length ? data.workspaceFilter.join("、") : "全部"} · Ctrl/⌘ 点击可多选`),
 			);
 	}
 
