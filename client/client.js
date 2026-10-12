@@ -166,20 +166,30 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 			colorScheme: theme.dark ? "dark" : "light",
 		};
 
+		// Refs mirror the latest filter state so the change handlers can build
+		// the request WITHOUT depending on them — this breaks the
+		// setState -> useCallback-identity -> useEffect-refire loop that made
+		// every filter change fire two fetches (the second, effect-driven one
+		// racing the first; with the corpus single-flight and 30s summary cache
+		// it usually resolved, but a raced 500 left the panel blank).
+		const stateRef = React.useRef({ workspace, subagents, range, customFrom, customTo });
+		stateRef.current = { workspace, subagents, range, customFrom, customTo };
+
 		const load = React.useCallback(async (opts = {}) => {
 			// Keep the previous data on screen while refreshing; only a real
 			// failure replaces it with the error view.
+			const s = stateRef.current;
 			setLoading(true);
 			setError(null);
 			try {
-				const nextRange = opts.range ?? range;
+				const nextRange = opts.range ?? s.range;
 				const win = rangeWindow(
 					nextRange,
-					opts.customFrom ?? customFrom,
-					opts.customTo ?? customTo);
+					opts.customFrom ?? s.customFrom,
+					opts.customTo ?? s.customTo);
 				const payload = await fetchSummary({
-					workspace: opts.workspace ?? workspace, // array -> repeated params
-					subagents: opts.subagents ?? subagents,
+					workspace: opts.workspace ?? s.workspace, // array -> repeated params
+					subagents: opts.subagents ?? s.subagents,
 					from: win.from,
 					to: win.to,
 					refresh: opts.refresh ? "1" : undefined,
@@ -190,8 +200,10 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 			} finally {
 				setLoading(false);
 			}
-		}, [workspace, subagents, range, customFrom, customTo]);
+		}, []);
 
+		// Initial load only. Filter changes fetch through their own handlers;
+		// no effect re-fire, no duplicate requests.
 		React.useEffect(() => { load(); }, [load]);
 
 		if (error && !data) {
@@ -219,12 +231,30 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						setWorkspace(picked);
 						load({ workspace: picked });
 					},
+					onMouseDown: (e) => {
+						// Plain click on a list-box option replaces the selection; with
+						// ctrl/cmd it toggles. Catch the plain click and make it TOGGLE
+						// too, so picking a second workspace never needs the modifier.
+						// The picked array is captured through a ref-free closure over
+						// the CURRENT state value, so a stale `workspace` state cannot
+						// shrink the selection.
+						const opt = e.target.closest("option");
+						if (!opt || e.ctrlKey || e.metaKey) return;
+						e.preventDefault();
+						e.stopPropagation();
+						const current = stateRef.current.workspace;
+						const picked = current.includes(opt.value)
+							? current.filter((w) => w !== opt.value)
+							: [...current, opt.value];
+						setWorkspace(picked);
+						load({ workspace: picked });
+					},
 				},
 					(data.workspaces ?? []).map((w) => createElement("option", { key: w, value: w }, w))),
 				createElement("button", {
 					style: styles.button,
 					onClick: () => { setWorkspace([]); load({ workspace: [] }); },
-				}, workspace.length === 0 ? "全部工作区" : `全部工作区 (已选 ${workspace.length})`),
+				}, stateRef.current.workspace.length === 0 ? "全部工作区" : `全部工作区 (已选 ${stateRef.current.workspace.length})`),
 				createElement("select", {
 					style: selectStyle, value: range,
 					onChange: (e) => { const v = e.target.value; setRange(v); load({ range: v }); },
