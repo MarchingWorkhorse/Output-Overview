@@ -41,22 +41,31 @@ dsh plugin --profile web add D:\path\to\output-overview
 
 ## 定价与币种配置
 
-成本默认按 `glm-5.3-flash` 的 USD 单价计算（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21，每 1M tokens），并**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。换模型、换价或换显示币种时，在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
+成本按**模型分表计价**：每个轮次按产生它的模型（会话日志的 `request/header` / `request/context` / `model/selection` 事件）取对应单价，USD / 1M tokens；模型未知或不在表内的轮次回落到 `default`。默认只有 `glm-5.3-flash` 一档（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21）。成本**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
 
 ```yaml
 - id: output-overview
   config:
     pricing:
-      label: my-model
-      hit: 0.01725   # cacheReadTokens，USD / 1M
-      miss: 0.06     # 未缓存输入 inputTokens
-      write: 0.21    # cacheWriteTokens
-      out: 0.21      # 输出 outputTokens
+      default: glm-5.3-flash          # 未知模型轮次按这个模型计价
+      models:
+        glm-5.3-flash:                # 键名 = 会话日志里的模型 id
+          hit: 0.01725                # cacheReadTokens，USD / 1M
+          miss: 0.06                  # 未缓存输入 inputTokens
+          write: 0.21                 # cacheWriteTokens
+          out: 0.21                   # 输出 outputTokens
+        zj-deepseek-v4-flash:         # 加一行即支持另一个模型
+          hit: 0.01
+          miss: 0.05
+          write: 0.18
+          out: 0.18
     currency:        # 显示币种（成本值按 fx 折算，pricing 仍为 USD 报价）
       code: CNY      # 改回 USD 即恢复美元显示
       symbol: "¥"
       fx: 6.7        # 1 USD = 6.7 显示币种
 ```
+
+单一模型的旧写法（`pricing: { label, hit, miss, write, out }` 平铺一档价）仍然兼容，等价于只有一条记录的模型表。面板底注会列出每个模型的花费与轮数（如 `glm-5.3-flash ¥25.34（84 轮 · 0.06/0.21）`），便于核对哪款模型烧钱。
 
 ## 数据来源与权限说明
 

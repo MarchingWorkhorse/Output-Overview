@@ -391,7 +391,11 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					? `${customFrom || "最早"} ~ ${customTo || "现在"}`
 					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
 			data.costs?.pricing && createElement("div", { style: styles.note },
-				`成本按轮次归集并以 ${cur.code}（${cur.symbol}）显示（汇率 1 USD = ${data.costs.fx?.rate ?? 1} ${cur.code}；模型定价 ${data.costs.pricing.label || "当前模型"}：USD / 1M tokens，输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
+				`成本按轮次归集并以 ${cur.code}（${cur.symbol}）显示（汇率 1 USD = ${data.costs.fx?.rate ?? 1} ${cur.code}）· 各模型成本（USD 单价 / 1M tokens，输入/输出）：${
+					Object.entries(data.costs.pricing.models ?? {})
+						.map(([k, v]) => `${k} ${money(v.cost)}（${v.turns} 轮 · ${v.rates ? `${v.rates.miss ?? "—"}/${v.rates.out ?? "—"}` : "未知单价"}）`)
+						.join("；") || "未配置定价"
+				} · 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
 			staleHost && createElement("div", { style: { ...styles.note, color: "#d29922" } },
 				"检测到主机端插件仍是旧版本（workspaceFilter 为字符串）：请重启 DSH 让 lib/ 生效后强刷本页。"),
 			createElement("div", { style: styles.note },
