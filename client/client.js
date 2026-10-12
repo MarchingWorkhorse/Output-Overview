@@ -216,7 +216,24 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 				createElement("div", { style: styles.note }, loading ? "统计计算中…（首次打开需要重放全部会话日志，之后走缓存）" : "暂无数据"));
 		}
 
-		const recentDays = [...data.days].slice(-14).reverse();
+		// Defensive normalization: a stale host (lib predating the multi-select
+	// fix) reports `workspaceFilter` as a plain string and shrinks
+	// `workspaces` — rendering must never crash on such payloads (a string
+	// has no .join, and a TypeError inside React unmounts the whole panel).
+	const rawFilter = data.workspaceFilter;
+	const filterList = Array.isArray(rawFilter) ? rawFilter : rawFilter ? [rawFilter] : [];
+	const workspaceList = Array.isArray(data.workspaces) ? data.workspaces : [];
+	// Remember every workspace ever seen so a stale host's shrunken list
+	// cannot collapse the option box back to one entry.
+	const knownWsRef = React.useRef(workspaceList.slice());
+	const known = new Set(knownWsRef.current);
+	for (const w of workspaceList) if (!known.has(w)) { known.add(w); knownWsRef.current.push(w); }
+	const fullWorkspaceList = knownWsRef.current;
+	// Pre-multiselect host lib reports the filter as a plain string; warn so a
+	// half-updated deployment (client hot-reloaded, host not restarted) is
+	// diagnosable instead of silently wrong.
+	const staleHost = typeof data.workspaceFilter === "string";
+	const recentDays = [...data.days].slice(-14).reverse();
 
 		return createElement("div", { style: styles.root },
 			createElement("div", { style: styles.headerRow },
@@ -224,7 +241,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 				// several; an empty selection means all workspaces.
 				createElement("select", {
 					style: { ...selectStyle, height: 64 },
-					multiple: true, size: Math.min(6, Math.max(2, data.workspaces?.length ?? 2)),
+					multiple: true, size: Math.min(6, Math.max(2, fullWorkspaceList.length || 2)),
 					value: workspace,
 					onChange: (e) => {
 						const picked = [...e.target.selectedOptions].map((o) => o.value);
@@ -250,7 +267,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						load({ workspace: picked });
 					},
 				},
-					(data.workspaces ?? []).map((w) => createElement("option", { key: w, value: w }, w))),
+					fullWorkspaceList.map((w) => createElement("option", { key: w, value: w }, w))),
 				createElement("button", {
 					style: styles.button,
 					onClick: () => { setWorkspace([]); load({ workspace: [] }); },
@@ -351,9 +368,30 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
 			data.costs?.pricing && createElement("div", { style: styles.note },
 				`成本按轮次归集（${data.costs.pricing.label || "当前模型"}，USD / 1M tokens：输入 ${data.costs.pricing.miss} · 缓存读 ${data.costs.pricing.hit} · 缓存写 ${data.costs.pricing.write} · 输出 ${data.costs.pricing.out}）· 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
+			staleHost && createElement("div", { style: { ...styles.note, color: "#d29922" } },
+				"检测到主机端插件仍是旧版本（workspaceFilter 为字符串）：请重启 DSH 让 lib/ 生效后强刷本页。"),
 			createElement("div", { style: styles.note },
-				`工作区筛选：${data.workspaceFilter?.length ? data.workspaceFilter.join("、") : "全部"} · Ctrl/⌘ 点击可多选`),
+				`工作区筛选：${filterList.length ? filterList.join("、") : "全部"} · 点击列表项可多选`),
 			);
+	}
+
+	/**
+	 * Render guard: any unexpected render error previously unmounted the whole
+	 * settings section (observed as "panel goes permanently blank"), because
+	 * the host renders the slot without its own boundary. Show the message and
+	 * a reset button instead.
+	 */
+	class PanelBoundary extends React.Component {
+		constructor(props) { super(props); this.state = { error: null }; }
+		static getDerivedStateFromError(error) { return { error }; }
+		render() {
+			if (this.state.error) {
+				return createElement("div", { style: styles.root },
+					createElement("div", { style: styles.error }, `渲染出错：${String(this.state.error?.message ?? this.state.error)}`),
+					createElement("button", { style: styles.button, onClick: () => this.setState({ error: null }) }, "重试"));
+			}
+			return this.props.children;
+		}
 	}
 
 	function apply(ctx) {
@@ -362,7 +400,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 			id: "output-overview",
 			order: 42,
 			label: () => "产出总览",
-		}, () => createElement(SummaryPanel)));
+		}, () => createElement(PanelBoundary, null, createElement(SummaryPanel))));
 	}
 
 	exports.name = name;
