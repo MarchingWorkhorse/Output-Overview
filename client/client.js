@@ -44,6 +44,25 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		return response.json();
 	}
 
+	/** GET the effective pricing/currency config the host would apply. */
+	async function fetchConfig() {
+		const response = await fetch(new URL("config", apiBase()), { headers: { accept: "application/json" } });
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		return response.json();
+	}
+
+	/** POST pricing/currency to the host; payload matches the editor state. */
+	async function saveConfig(body) {
+		const response = await fetch(new URL("config", apiBase()), {
+			method: "POST",
+			headers: { "content-type": "application/json", accept: "application/json" },
+			body: JSON.stringify(body),
+		});
+		const json = await response.json().catch(() => ({}));
+		if (!response.ok) throw new Error(json.error ?? `HTTP ${response.status}`);
+		return json;
+	}
+
 	const RANGES = [
 		{ id: "all", label: "全部时间" },
 		{ id: "today", label: "今天" },
@@ -165,6 +184,9 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		const [range, setRange] = React.useState("all");
 		const [customFrom, setCustomFrom] = React.useState(() => isoDay(new Date(Date.now() - 30 * 86_400_000)));
 		const [customTo, setCustomTo] = React.useState(() => isoDay(new Date()));
+		// Pricing editor state. `editor === null` means closed; otherwise it
+		// holds { models: [{id, rates}], default, currency, saving, err }.
+		const [editor, setEditor] = React.useState(null);
 		const theme = themeInfo();
 		const selectStyle = {
 			...styles.select,
@@ -189,6 +211,10 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		// order must be identical on every render — violating that throws
 		// React error #310 and the panel dies).
 		const knownWsRef = React.useRef([]);
+		// Pricing editor draft state. Kept in a ref (not state) so typing in
+		// the inputs never triggers a panel re-render mid-edit; the editor
+		// re-renders through the `editor` state (open/saving/err).
+		const draftRef = React.useRef(null);
 
 		const load = React.useCallback(async (opts = {}) => {
 			// Keep the previous data on screen while refreshing; only a real
@@ -316,6 +342,32 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						onChange: (e) => { const v = String(e.target.checked); setSubagents(v); load({ subagents: v }); },
 					}), "含子代理"),
 				createElement("button", { style: styles.button, onClick: () => load({ refresh: true }) }, loading ? "计算中…" : "刷新"),
+				createElement("button", {
+					style: styles.button,
+					title: "配置模型单价与汇率",
+					onClick: async () => {
+						if (editor) { setEditor(null); return; }
+						try {
+							const cfg = await fetchConfig();
+							const rates = cfg.pricing?.models ?? {};
+							const ids = new Set([
+								...Object.keys(rates),
+								...(data.models ?? []).map((m) => m.id),
+							]);
+							const rows = [...ids].map((id) => ({ id, rates: rates[id] ?? {} }));
+							setEditor({
+								rows,
+								default: cfg.pricing?.default ?? rows[0]?.id ?? "",
+								currency: cfg.currency ?? { code: "CNY", symbol: "¥", fx: 6.7 },
+								source: cfg.source ?? "config",
+								saving: false,
+								err: null,
+							});
+						} catch (err) {
+							setEditor({ rows: [], default: "", currency: { code: "CNY", symbol: "¥", fx: 6.7 }, source: "error", saving: false, err: String(err?.message ?? err) });
+						}
+					},
+				}, editor ? "收起定价配置" : "定价配置"),
 			// sessionCount is scoped to the workspace filter by the host;
 			// totalSessionCount (when present) reports the whole store.
 			createElement("span", { style: styles.note },
@@ -398,6 +450,115 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 				} · 有用量的轮次 ${data.costs.turnsWithUsage} · 无用量 ${data.costs.turnsWithoutUsage}`),
 			staleHost && createElement("div", { style: { ...styles.note, color: "#d29922" } },
 				"检测到主机端插件仍是旧版本（workspaceFilter 为字符串）：请重启 DSH 让 lib/ 生效后强刷本页。"),
+			editor && (() => {
+				// Pricing editor: one row per model (pre-filled from the corpus
+				// model list + the current config), a default-model picker, and
+				// the display currency. Save POSTs to /api/config; the host
+				// persists to ~/.dsh/output-overview-config.json and invalidates
+				// its summary cache, so the panel recomputes immediately.
+				const setRow = (i, key, value) => {
+					setEditor((ed) => {
+						const rows = ed.rows.map((r, j) => (j === i ? { ...r, rates: { ...r.rates, [key]: value } } : r));
+						return { ...ed, rows, err: null };
+					});
+				};
+				const num = (v) => {
+					if (v === "" || v === null || v === undefined) return undefined;
+					const n = Number(v);
+					return Number.isFinite(n) && n >= 0 ? n : undefined;
+				};
+				const save = async () => {
+					setEditor((ed) => ({ ...ed, saving: true, err: null }));
+					try {
+						const models = {};
+						for (const row of editor.rows) {
+							const rates = {};
+							for (const k of ["hit", "miss", "write", "out"]) {
+								const v = num(row.rates[k]);
+								if (v !== undefined) rates[k] = v;
+							}
+							if (Object.keys(rates).length > 0) models[row.id] = rates;
+						}
+						if (Object.keys(models).length === 0) throw new Error("至少给一个模型填单价");
+						await saveConfig({ pricing: { default: editor.default, models }, currency: editor.currency });
+						setEditor((ed) => ({ ...ed, saving: false, source: "panel" }));
+						await load({ refresh: true });
+					} catch (err) {
+						setEditor((ed) => ({ ...ed, saving: false, err: String(err?.message ?? err) }));
+					}
+				};
+				const reset = async () => {
+					setEditor((ed) => ({ ...ed, saving: true, err: null }));
+					try {
+						await saveConfig({ pricing: null, currency: null }); // drop overrides -> YAML defaults
+						const cfg = await fetchConfig();
+						const rates = cfg.pricing?.models ?? {};
+						const ids = new Set([...Object.keys(rates), ...(data.models ?? []).map((m) => m.id)]);
+						setEditor({
+							rows: [...ids].map((id) => ({ id, rates: rates[id] ?? {} })),
+							default: cfg.pricing?.default ?? "",
+							currency: cfg.currency ?? editor.currency,
+							source: cfg.source ?? "config",
+							saving: false,
+							err: null,
+						});
+						await load({ refresh: true });
+					} catch (err) {
+						setEditor((ed) => ({ ...ed, saving: false, err: String(err?.message ?? err) }));
+					}
+				};
+				const inputStyle = { ...selectStyle, maxWidth: 110, padding: "3px 6px" };
+				const cell = (row, i, key, label) => createElement("label", { key, style: { display: "flex", alignItems: "center", gap: 3, fontSize: 11, opacity: 0.8 } },
+					label,
+					createElement("input", {
+						type: "number", min: 0, step: "any", style: inputStyle,
+						value: row.rates[key] ?? "",
+						placeholder: "—",
+						onChange: (e) => setRow(i, key, e.target.value),
+					}));
+				return createElement("div", { style: { border: "1px solid var(--color-border, #8884)", borderRadius: 8, padding: "10px 12px", margin: "4px 0 12px" } },
+					createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } },
+						createElement("span", { style: { fontWeight: 600, fontSize: 12 } }, "模型定价（USD / 1M tokens）"),
+						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
+							"未知模型按",
+							createElement("select", {
+								style: inputStyle, value: editor.default,
+								onChange: (e) => setEditor((ed) => ({ ...ed, default: e.target.value })),
+							}, editor.rows.map((r) => createElement("option", { key: r.id, value: r.id }, r.id)))),
+						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
+							"显示币种",
+							createElement("select", {
+								style: inputStyle, value: editor.currency.code,
+								onChange: (e) => setEditor((ed) => {
+									const code = e.target.value;
+									return { ...ed, currency: { code, symbol: code === "CNY" ? "¥" : code === "USD" ? "$" : code, fx: ed.currency.fx } };
+								}),
+							}, ["CNY", "USD"].map((c) => createElement("option", { key: c, value: c }, c)))),
+						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
+							"汇率 1 USD =",
+							createElement("input", {
+								type: "number", min: 0, step: "any", style: inputStyle, value: editor.currency.fx,
+								onChange: (e) => setEditor((ed) => ({ ...ed, currency: { ...ed.currency, fx: e.target.value } })),
+							}),
+							editor.currency.code),
+						createElement("span", { style: styles.note, style: { fontSize: 11, opacity: 0.6 } },
+							`生效来源：${editor.source === "panel" ? "面板（已持久化）" : "cordis.patch.yml"}`),
+						createElement("button", { style: styles.button, onClick: save, disabled: editor.saving }, editor.saving ? "保存中…" : "保存并重算"),
+						createElement("button", { style: styles.button, onClick: reset, disabled: editor.saving }, "恢复默认")),
+					createElement("table", { style: styles.table },
+						createElement("thead", null, createElement("tr", null,
+							["模型", "未缓存输入 miss", "缓存读 hit", "缓存写 write", "输出 out", "轮数"].map((h) => createElement("th", { key: h, style: styles.th }, h)))),
+						createElement("tbody", null, editor.rows.map((row, i) => createElement("tr", { key: row.id },
+							createElement("td", { style: styles.td }, row.id),
+							cell(row, i, "miss", ""),
+							cell(row, i, "hit", ""),
+							cell(row, i, "write", ""),
+							cell(row, i, "out", ""),
+							createElement("td", { style: styles.td }, fmt((data.models ?? []).find((m) => m.id === row.id)?.turns ?? 0)))))),
+					editor.err && createElement("div", { style: styles.error }, `保存失败：${editor.err}`),
+					createElement("div", { style: styles.note }, "保存后写入 ~/.dsh/output-overview-config.json（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖。"),
+				);
+			})(),
 			createElement("div", { style: styles.note },
 				`工作区筛选：${filterList.length ? filterList.join("、") : "全部"} · 点击列表项可多选`),
 			);

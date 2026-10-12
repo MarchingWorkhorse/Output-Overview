@@ -37,11 +37,15 @@ dsh plugin --profile web add D:\path\to\output-overview
 ## 使用
 
 - **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（点击列表项切换选中，可多选；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。成本以人民币（¥）显示，注明汇率；**选定工作区后，所有卡片（含总成本）只统计该工作区的会话**，右上角显示「N 个会话（全部 M）」。
-- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；**所有指标（含成本与会话数）均跟随工作区过滤**——`sessionCount` 是所选工作区的会话数，全库总数另以 `totalSessionCount` 给出；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；**所有指标（含成本与会话数）均跟随工作区过滤**——`sessionCount` 是所选工作区的会话数，全库总数另以 `totalSessionCount` 给出；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。面板配置另有 `GET/POST /output-overview/api/config`（读取/保存定价与币种覆盖，POST 后 summary 缓存自动失效）。
 
 ## 定价与币种配置
 
-成本按**模型分表计价**：每个轮次按产生它的模型（会话日志的 `request/header` / `request/context` / `model/selection` 事件）取对应单价，USD / 1M tokens；模型未知或不在表内的轮次回落到 `default`。默认只有 `glm-5.3-flash` 一档（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21）。成本**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。在 profile 的 `cordis.patch.yml` 加一段按 id 覆盖的配置即可（改完重启生效）：
+**推荐：直接在面板配置。** 打开 设置 → 「产出总览」，点顶部「定价配置」按钮：模型列表自动从会话日志提取（含各自轮数），逐个填四类单价（USD / 1M tokens）、选默认模型、改显示币种与汇率，点「保存并重算」即时生效。保存写入 `~/.dsh/output-overview-config.json`（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖、回到 YAML/内置默认。
+
+也可以改 profile 的 `cordis.patch.yml`（改完重启生效）：
+
+成本按**模型分表计价**：每个轮次按产生它的模型（会话日志的 `request/header` / `request/context` / `model/selection` 事件）取对应单价，USD / 1M tokens；模型未知或不在表内的轮次回落到 `default`。默认只有 `glm-5.3-flash` 一档（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21）。成本**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。
 
 ```yaml
 - id: output-overview
@@ -70,7 +74,7 @@ dsh plugin --profile web add D:\path\to\output-overview
 ## 数据来源与权限说明
 
 - 通过 `ctx.sessionQuery`（dsh-base 默认挂载的会话查询服务）读取本机 `~/.dsh/sessions` 下的会话日志，筛选文件写入类工具调用并解析参数与结果；被拒绝或执行失败的调用不计入生成行数。
-- **只读**：插件仅注册 GET 路由，不执行 shell、不写文件、不访问外部网络、不收集遥测。
+- **只读 + 一处配置写入**：统计只注册 GET 路由，不执行 shell、不访问外部网络、不收集遥测；唯一的写操作是面板「保存定价」写 `~/.dsh/output-overview-config.json`（原子写入）。
 - 统计为近似重放：编辑重放按字面量子串替换语义执行，极端情况（如文件被 AI 之外的手段修改）可能偏差。
 
 ## 兼容性
