@@ -5,6 +5,27 @@
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "output",
+    "stats",
+    "adoption",
+    "cost"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarchingWorkhorse/Output-Overview.git"
+  },
+  "files": [
+    "lib",
+    "client",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
