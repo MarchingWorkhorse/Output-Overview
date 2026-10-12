@@ -36,8 +36,8 @@ dsh plugin --profile web add D:\path\to\output-overview
 
 ## 使用
 
-- **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（点击列表项切换选中，可多选；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。成本以人民币（¥）显示，注明汇率。
-- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。
+- **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（点击列表项切换选中，可多选；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。成本以人民币（¥）显示，注明汇率；**选定工作区后，所有卡片（含总成本）只统计该工作区的会话**，右上角显示「N 个会话（全部 M）」。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；**所有指标（含成本与会话数）均跟随工作区过滤**——`sessionCount` 是所选工作区的会话数，全库总数另以 `totalSessionCount` 给出；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。
 
 ## 定价与币种配置
 

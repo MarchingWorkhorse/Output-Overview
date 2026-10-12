@@ -316,7 +316,10 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						onChange: (e) => { const v = String(e.target.checked); setSubagents(v); load({ subagents: v }); },
 					}), "含子代理"),
 				createElement("button", { style: styles.button, onClick: () => load({ refresh: true }) }, loading ? "计算中…" : "刷新"),
-				createElement("span", { style: styles.note }, `${data.sessionCount ?? 0} 个会话 · ${data.computeMs ?? 0}ms`)),
+			// sessionCount is scoped to the workspace filter by the host;
+			// totalSessionCount (when present) reports the whole store.
+			createElement("span", { style: styles.note },
+				`${data.sessionCount ?? 0} 个会话（全部 ${data.totalSessionCount ?? data.sessionCount ?? 0}） · ${data.computeMs ?? 0}ms`)),
 
 			createElement("div", { style: styles.cards },
 				createElement(StatCard, {

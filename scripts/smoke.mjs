@@ -112,6 +112,13 @@ async function main() {
         if (typeof fx !== 'number' || fx <= 0) throw new Error(`fx rate invalid: ${fx}`);
         if (json.costs.pricing?.currency !== 'USD') throw new Error('pricing must stay USD');
       }
+      // sessionCount must follow the workspace filter; the store-wide total
+      // is reported separately as totalSessionCount.
+      if (typeof json.sessionCount !== 'number') throw new Error('sessionCount missing');
+      if (typeof json.totalSessionCount !== 'number') throw new Error('totalSessionCount missing');
+      if ((json.workspaceFilter ?? []).length > 0 && json.sessionCount > json.totalSessionCount) {
+        throw new Error(`scoped sessionCount ${json.sessionCount} exceeds total ${json.totalSessionCount}`);
+      }
     }
     // Multi-workspace selection must return the union and keep the full
     // option list; single selection must not shrink the option list.
@@ -124,7 +131,15 @@ async function main() {
         }).on('error', reject);
       });
       const json = JSON.parse(body);
-      console.log(`GET ${suffix} -> filter=[${(json.workspaceFilter ?? []).join(',')}] sessions=${json.sessionCount} code=${json.code?.generatedLines}L wsOptions=${json.workspaces?.length}`);
+      console.log(`GET ${suffix} -> filter=[${(json.workspaceFilter ?? []).join(',')}] sessions=${json.sessionCount}/${json.totalSessionCount} code=${json.code?.generatedLines}L wsOptions=${json.workspaces?.length}`);
+      // A picked workspace must scope sessionCount to that workspace.
+      if ((json.workspaceFilter ?? []).length > 0) {
+        if (json.sessionCount >= json.totalSessionCount) throw new Error('picked workspace did not scope sessionCount');
+        const wsSessions = new Set(json.sessions.filter((s) => json.workspaceFilter.includes(s.workspace)).map((s) => s.id));
+        if (wsSessions.size !== json.sessionCount) {
+          throw new Error(`sessionCount ${json.sessionCount} != sessions in filtered workspaces ${wsSessions.size}`);
+        }
+      }
     }
   } finally {
     server.close();

@@ -95,6 +95,8 @@ const CONTRACT = [
   ['workspaces:array', (o) => Array.isArray(o?.workspaces)],
   ['workspaceFilter:array', (o) => Array.isArray(o?.workspaceFilter)],
   ['sessionCount:number', (o) => typeof o?.sessionCount === 'number'],
+  ['totalSessionCount:number', (o) => typeof o?.totalSessionCount === 'number'],
+  ['sessionCount scoped when filtered', (o) => (o?.workspaceFilter?.length ?? 0) === 0 || o.sessionCount <= o.totalSessionCount],
   ['generatedAt:number', (o) => typeof o?.generatedAt === 'number'],
   ['computeMs:number', (o) => typeof o?.computeMs === 'number'],
   ['includeSubagents:boolean', (o) => typeof o?.includeSubagents === 'boolean'],
@@ -118,7 +120,7 @@ for (const w of all.workspaces) {
     console.log(`   payload keys: ${Object.keys(payload).join(',')}`);
     console.log(`   excerpt: ${res.body.slice(0, 260)}`);
   } else {
-    console.log(`ok   ${label} code=${payload.code.generatedLines}L days=${payload.days.length} files=${payload.files.length} sessions=${payload.sessions.length} filter=${JSON.stringify(payload.workspaceFilter)}`);
+    console.log(`ok   ${label} code=${payload.code.generatedLines}L cost=${payload.costs ? `${payload.displayCurrency?.symbol ?? '¥'}${payload.costs.total?.toFixed(2)}${payload.displayCurrency?.code ?? ''}` : 'n/a'} days=${payload.days.length} files=${payload.files.length} sessions=${payload.sessions.length} count=${payload.sessionCount}/${payload.totalSessionCount} filter=${JSON.stringify(payload.workspaceFilter)}`);
   }
 }
 
