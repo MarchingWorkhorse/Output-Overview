@@ -167,6 +167,8 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 		};
 
 		const load = React.useCallback(async (opts = {}) => {
+			// Keep the previous data on screen while refreshing; only a real
+			// failure replaces it with the error view.
 			setLoading(true);
 			setError(null);
 			try {
@@ -192,14 +194,14 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 
 		React.useEffect(() => { load(); }, [load]);
 
-		if (error) {
+		if (error && !data) {
 			return createElement("div", { style: styles.root },
 				createElement("div", { style: styles.error }, `加载失败：${error}`),
 				createElement("button", { style: styles.button, onClick: () => load() }, "重试"));
 		}
 		if (!data) {
 			return createElement("div", { style: styles.root },
-				createElement("div", { style: styles.note }, loading ? "统计计算中…" : "暂无数据"));
+				createElement("div", { style: styles.note }, loading ? "统计计算中…（首次打开需要重放全部会话日志，之后走缓存）" : "暂无数据"));
 		}
 
 		const recentDays = [...data.days].slice(-14).reverse();
