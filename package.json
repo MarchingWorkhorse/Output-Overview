@@ -1,7 +1,7 @@
 {
   "name": "output-overview",
   "description": "DSH 产出总览插件：统计 DSH 生成的代码行数、文档数、采纳率与成本，Web 面板展示。Output statistics for DeepSeek Harness: generated code lines, docs, adoption rates, and cost.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",

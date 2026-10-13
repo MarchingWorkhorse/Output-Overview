@@ -348,6 +348,11 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					onClick: async () => {
 						if (editor) { setEditor(null); return; }
 						try {
+							// Refresh the summary first so `data.models` reflects turns
+							// made since the panel last loaded (e.g. a new model just
+							// used in another session) — otherwise the editor would
+							// offer a stale model list from the 30s-cached payload.
+							await load({ refresh: true });
 							const cfg = await fetchConfig();
 							const rates = cfg.pricing?.models ?? {};
 							const ids = new Set([
@@ -358,13 +363,14 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 							setEditor({
 								rows,
 								default: cfg.pricing?.default ?? rows[0]?.id ?? "",
+								unit: cfg.pricing?.unit ?? "USD",
 								currency: cfg.currency ?? { code: "CNY", symbol: "¥", fx: 6.7 },
 								source: cfg.source ?? "config",
 								saving: false,
 								err: null,
 							});
 						} catch (err) {
-							setEditor({ rows: [], default: "", currency: { code: "CNY", symbol: "¥", fx: 6.7 }, source: "error", saving: false, err: String(err?.message ?? err) });
+							setEditor({ rows: [], default: "", unit: "USD", currency: { code: "CNY", symbol: "¥", fx: 6.7 }, source: "error", saving: false, err: String(err?.message ?? err) });
 						}
 					},
 				}, editor ? "收起定价配置" : "定价配置"),
@@ -443,7 +449,12 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					? `${customFrom || "最早"} ~ ${customTo || "现在"}`
 					: (RANGES.find((r) => r.id === range) ?? RANGES[0]).label} · ${data.includeSubagents ? "含" : "不含"}子代理会话 · ${data.unreadableSessions ? `${data.unreadableSessions} 个会话读取失败 · ` : ""}生成时间 ${new Date(data.generatedAt).toLocaleString()}`),
 			data.costs?.pricing && createElement("div", { style: styles.note },
-				`成本按轮次归集并以 ${cur.code}（${cur.symbol}）显示（汇率 1 USD = ${data.costs.fx?.rate ?? 1} ${cur.code}）· 各模型成本（USD 单价 / 1M tokens，输入/输出）：${
+				`成本按轮次归集并以 ${cur.code}（${cur.symbol}）显示${
+					// Only mention the fx chain when it is actually non-trivial.
+					data.costs.fx && data.costs.fx.rate !== 1
+						? `（汇率 1 USD = ${data.costs.fx.rate} ${cur.code}）`
+						: ""
+				} · 各模型成本（${data.costs.pricing.currency === "CNY" ? "CNY" : "USD"} 单价 / 1M tokens，输入/输出）：${
 					Object.entries(data.costs.pricing.models ?? {})
 						.map(([k, v]) => `${k} ${money(v.cost)}（${v.turns} 轮 · ${v.rates ? `${v.rates.miss ?? "—"}/${v.rates.out ?? "—"}` : "未知单价"}）`)
 						.join("；") || "未配置定价"
@@ -452,10 +463,11 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 				"检测到主机端插件仍是旧版本（workspaceFilter 为字符串）：请重启 DSH 让 lib/ 生效后强刷本页。"),
 			editor && (() => {
 				// Pricing editor: one row per model (pre-filled from the corpus
-				// model list + the current config), a default-model picker, and
-				// the display currency. Save POSTs to /api/config; the host
-				// persists to ~/.dsh/output-overview-config.json and invalidates
-				// its summary cache, so the panel recomputes immediately.
+				// model list + the current config), a default-model picker, the
+				// unit-price currency (USD or CNY) and the display currency.
+				// Save POSTs to /api/config; the host persists to
+				// ~/.dsh/output-overview-config.json and invalidates its summary
+				// cache, so the panel recomputes immediately.
 				const setRow = (i, key, value) => {
 					setEditor((ed) => {
 						const rows = ed.rows.map((r, j) => (j === i ? { ...r, rates: { ...r.rates, [key]: value } } : r));
@@ -480,7 +492,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 							if (Object.keys(rates).length > 0) models[row.id] = rates;
 						}
 						if (Object.keys(models).length === 0) throw new Error("至少给一个模型填单价");
-						await saveConfig({ pricing: { default: editor.default, models }, currency: editor.currency });
+						await saveConfig({ pricing: { default: editor.default, unit: editor.unit, models }, currency: editor.currency });
 						setEditor((ed) => ({ ...ed, saving: false, source: "panel" }));
 						await load({ refresh: true });
 					} catch (err) {
@@ -497,6 +509,7 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						setEditor({
 							rows: [...ids].map((id) => ({ id, rates: rates[id] ?? {} })),
 							default: cfg.pricing?.default ?? "",
+							unit: cfg.pricing?.unit ?? "USD",
 							currency: cfg.currency ?? editor.currency,
 							source: cfg.source ?? "config",
 							saving: false,
@@ -506,6 +519,19 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					} catch (err) {
 						setEditor((ed) => ({ ...ed, saving: false, err: String(err?.message ?? err) }));
 					}
+				};
+				// Append an empty row for a model the corpus hasn't used yet
+				// (e.g. a model about to be tried) so pricing can be pre-filled.
+				const addRow = () => {
+					setEditor((ed) => {
+						const id = (ed.newId ?? "").trim();
+						if (!id) return { ...ed, err: "请先填写模型 ID" };
+						if (ed.rows.some((r) => r.id === id)) return { ...ed, err: `模型 ${id} 已在列表中` };
+						return { ...ed, rows: [...ed.rows, { id, rates: {} }], newId: "", err: null };
+					});
+				};
+				const removeRow = (id) => {
+					setEditor((ed) => ({ ...ed, rows: ed.rows.filter((r) => r.id !== id), err: null }));
 				};
 				const inputStyle = { ...selectStyle, maxWidth: 110, padding: "3px 6px" };
 				const cell = (row, i, key, label) => createElement("label", { key, style: { display: "flex", alignItems: "center", gap: 3, fontSize: 11, opacity: 0.8 } },
@@ -518,7 +544,14 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 					}));
 				return createElement("div", { style: { border: "1px solid var(--color-border, #8884)", borderRadius: 8, padding: "10px 12px", margin: "4px 0 12px" } },
 					createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 } },
-						createElement("span", { style: { fontWeight: 600, fontSize: 12 } }, "模型定价（USD / 1M tokens）"),
+						createElement("span", { style: { fontWeight: 600, fontSize: 12 } }, `模型定价（${editor.unit === "CNY" ? "CNY ¥" : "USD $"} / 1M tokens）`),
+						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
+							"单价币种",
+							createElement("select", {
+								style: inputStyle, value: editor.unit,
+								title: "单价的计价货币：选 CNY 后下面填的就是人民币价，无需再乘汇率",
+								onChange: (e) => setEditor((ed) => ({ ...ed, unit: e.target.value })),
+							}, ["USD", "CNY"].map((c) => createElement("option", { key: c, value: c }, c)))),
 						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
 							"未知模型按",
 							createElement("select", {
@@ -534,7 +567,9 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 									return { ...ed, currency: { code, symbol: code === "CNY" ? "¥" : code === "USD" ? "$" : code, fx: ed.currency.fx } };
 								}),
 							}, ["CNY", "USD"].map((c) => createElement("option", { key: c, value: c }, c)))),
-						createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
+						// The fx rate only matters when unit and display currency differ
+						// (USD-priced table shown in CNY, or vice versa).
+						editor.unit !== editor.currency.code && createElement("label", { style: { fontSize: 12, display: "flex", alignItems: "center", gap: 4 } },
 							"汇率 1 USD =",
 							createElement("input", {
 								type: "number", min: 0, step: "any", style: inputStyle, value: editor.currency.fx,
@@ -547,16 +582,28 @@ window.__ModuleLoader__.load({ id: "output-overview", factory: (require) => {
 						createElement("button", { style: styles.button, onClick: reset, disabled: editor.saving }, "恢复默认")),
 					createElement("table", { style: styles.table },
 						createElement("thead", null, createElement("tr", null,
-							["模型", "未缓存输入 miss", "缓存读 hit", "缓存写 write", "输出 out", "轮数"].map((h) => createElement("th", { key: h, style: styles.th }, h)))),
+							["模型", "未缓存输入 miss", "缓存读 hit", "缓存写 write", "输出 out", "轮数", ""].map((h) => createElement("th", { key: h, style: styles.th }, h)))),
 						createElement("tbody", null, editor.rows.map((row, i) => createElement("tr", { key: row.id },
 							createElement("td", { style: styles.td }, row.id),
 							cell(row, i, "miss", ""),
 							cell(row, i, "hit", ""),
 							cell(row, i, "write", ""),
 							cell(row, i, "out", ""),
-							createElement("td", { style: styles.td }, fmt((data.models ?? []).find((m) => m.id === row.id)?.turns ?? 0)))))),
+							createElement("td", { style: styles.td }, fmt((data.models ?? []).find((m) => m.id === row.id)?.turns ?? 0)),
+							createElement("td", { style: styles.td },
+								createElement("button", { style: { ...styles.button, padding: "1px 7px", fontSize: 11 }, title: "从定价表中移除该模型", onClick: () => removeRow(row.id) }, "移除")))))),
+					createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" } },
+						createElement("input", {
+							placeholder: "添加还没用过的模型 ID…", style: { ...inputStyle, maxWidth: 260, flex: 1 },
+							value: editor.newId ?? "",
+							onChange: (e) => setEditor((ed) => ({ ...ed, newId: e.target.value })),
+							onKeyDown: (e) => { if (e.key === "Enter") { e.preventDefault(); addRow(); } },
+						}),
+						createElement("button", { style: styles.button, onClick: addRow }, "添加模型")),
 					editor.err && createElement("div", { style: styles.error }, `保存失败：${editor.err}`),
-					createElement("div", { style: styles.note }, "保存后写入 ~/.dsh/output-overview-config.json（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖。"),
+					createElement("div", { style: styles.note }, editor.unit === "CNY"
+						? "单价按人民币填写（¥ / 1M tokens）；显示币种选 CNY 时总成本即为人民币，不经过美元换算。保存后写入 ~/.dsh/output-overview-config.json（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖。"
+						: "单价按美元填写（$ / 1M tokens）；显示币种按上方汇率折算。保存后写入 ~/.dsh/output-overview-config.json（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖。"),
 				);
 			})(),
 			createElement("div", { style: styles.note },

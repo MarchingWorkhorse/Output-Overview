@@ -37,39 +37,40 @@ dsh plugin --profile web add D:\path\to\output-overview
 ## 使用
 
 - **Web 面板**：设置 → 「产出总览」。顶部支持工作区多选（点击列表项切换选中，可多选；「全部工作区」按钮清空选择）、子代理会话开关、时间范围选择；下方为最近 14 天趋势表与文件 Top 10。成本以人民币（¥）显示，注明汇率；**选定工作区后，所有卡片（含总成本）只统计该工作区的会话**，右上角显示「N 个会话（全部 M）」。
-- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；**所有指标（含成本与会话数）均跟随工作区过滤**——`sessionCount` 是所选工作区的会话数，全库总数另以 `totalSessionCount` 给出；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing` 保留 USD 报价）。面板配置另有 `GET/POST /output-overview/api/config`（读取/保存定价与币种覆盖，POST 后 summary 缓存自动失效）。
+- **HTTP API**：`GET /output-overview/api/summary`，支持 `?workspace=<cwd>`（可重复出现实现多选，如 `?workspace=a&workspace=b`；缺省为全部）、`?subagents=false`、`?from=<ms>&to=<ms>`、`?refresh=1`。返回代码/文档/采纳率/成本聚合与明细；**所有指标（含成本与会话数）均跟随工作区过滤**——`sessionCount` 是所选工作区的会话数，全库总数另以 `totalSessionCount` 给出；成本值已按 `displayCurrency` 折算（`costs.currency`/`costs.fx.rate` 标注币种与汇率，`costs.pricing.currency` 是单价报价币种）。面板配置另有 `GET/POST /output-overview/api/config`（读取/保存定价与币种覆盖，POST 后 summary 缓存自动失效）。
 
 ## 定价与币种配置
 
-**推荐：直接在面板配置。** 打开 设置 → 「产出总览」，点顶部「定价配置」按钮：模型列表自动从会话日志提取（含各自轮数），逐个填四类单价（USD / 1M tokens）、选默认模型、改显示币种与汇率，点「保存并重算」即时生效。保存写入 `~/.dsh/output-overview-config.json`（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖、回到 YAML/内置默认。
+**推荐：直接在面板配置。** 打开 设置 → 「产出总览」，点顶部「定价配置」按钮：模型列表自动从会话日志提取（含各自轮数），逐个填四类单价、选**单价币种**（USD 或 CNY，选 CNY 即直接填人民币价）、选默认模型、改显示币种与汇率，点「保存并重算」即时生效。列表下方输入框可手动**添加模型**（还没用过、想预填单价的模型），每行可「移除」。保存写入 `~/.dsh/output-overview-config.json`（优先于 cordis.patch.yml，重启不丢）；「恢复默认」清除面板覆盖、回到 YAML/内置默认。
 
 也可以改 profile 的 `cordis.patch.yml`（改完重启生效）：
 
-成本按**模型分表计价**：每个轮次按产生它的模型（会话日志的 `request/header` / `request/context` / `model/selection` 事件）取对应单价，USD / 1M tokens；模型未知或不在表内的轮次回落到 `default`。默认只有 `glm-5.3-flash` 一档（输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21）。成本**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。
+成本按**模型分表计价**：每个轮次按产生它的模型（会话日志的 `request/header` / `request/context` / `model/selection` 事件）取对应单价；模型未知或不在表内的轮次回落到 `default`。单价币种由 `unit` 决定（`USD` 默认 / `CNY`），显示币种由 `currency` 决定——两者可以独立选择：CNY 单价 + CNY 显示时总成本就是人民币原值，不经过美元换算。默认只有 `glm-5.3-flash` 一档（USD 报价：输入 $0.06 / 缓存读 $0.01725 / 缓存写 $0.21 / 输出 $0.21）。成本**默认以人民币显示**（1 USD = 6.70 CNY，2026-10-12 牌价；面板会标注所用汇率）。
 
 ```yaml
 - id: output-overview
   config:
     pricing:
       default: glm-5.3-flash          # 未知模型轮次按这个模型计价
+      unit: CNY                       # 单价币种：CNY（人民币价）或 USD（默认）
       models:
         glm-5.3-flash:                # 键名 = 会话日志里的模型 id
-          hit: 0.01725                # cacheReadTokens，USD / 1M
-          miss: 0.06                  # 未缓存输入 inputTokens
-          write: 0.21                 # cacheWriteTokens
-          out: 0.21                   # 输出 outputTokens
+          hit: 0.11                   # cacheReadTokens，按 unit 报价 / 1M
+          miss: 0.42                  # 未缓存输入 inputTokens
+          write: 1.4                  # cacheWriteTokens
+          out: 1.4                    # 输出 outputTokens
         zj-deepseek-v4-flash:         # 加一行即支持另一个模型
-          hit: 0.01
-          miss: 0.05
-          write: 0.18
-          out: 0.18
-    currency:        # 显示币种（成本值按 fx 折算，pricing 仍为 USD 报价）
+          hit: 0.07
+          miss: 0.35
+          write: 1.2
+          out: 1.2
+    currency:        # 显示币种（成本值按 fx 折算；unit=CNY 且 currency=CNY 时不折算）
       code: CNY      # 改回 USD 即恢复美元显示
       symbol: "¥"
-      fx: 6.7        # 1 USD = 6.7 显示币种
+      fx: 6.7        # 1 USD = 6.7 显示币种（unit=USD 时用于折算；unit=CNY 且显示 CNY 时忽略）
 ```
 
-单一模型的旧写法（`pricing: { label, hit, miss, write, out }` 平铺一档价）仍然兼容，等价于只有一条记录的模型表。面板底注会列出每个模型的花费与轮数（如 `glm-5.3-flash ¥25.34（84 轮 · 0.06/0.21）`），便于核对哪款模型烧钱。
+单一模型的旧写法（`pricing: { label, hit, miss, write, out }` 平铺一档价）仍然兼容，等价于只有一条记录的模型表；不带 `unit` 字段的既有配置一律按 USD 报价处理。面板底注会列出每个模型的花费与轮数（如 `glm-5.3-flash ¥25.34（84 轮 · 0.42/1.4）`），便于核对哪款模型烧钱。
 
 ## 数据来源与权限说明
 
